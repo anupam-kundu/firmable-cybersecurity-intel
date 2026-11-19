@@ -159,8 +159,8 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
         execute_values(
             cur,
             """UPDATE companies AS c SET
-                asset_count = v.asset_cnt, open_ports = v.ports, tech_stack = v.stack,
-                cve_count = v.cve_cnt, top_cves = v.top_cves, expired_ssl_count = v.exp_ssl,
+                asset_count = v.asset_cnt, open_ports = v.ports::int[], tech_stack = v.stack::text[],
+                cve_count = v.cve_cnt, top_cves = v.top_cves::text[], expired_ssl_count = v.exp_ssl,
                 high_risk_port_count = v.hr_cnt, exposure_score = v.score, risk_tier = v.tier,
                 updated_at = NOW()
                FROM (VALUES %s) AS v(cid, asset_cnt, ports, stack, cve_cnt, top_cves, exp_ssl, hr_cnt, score, tier)
