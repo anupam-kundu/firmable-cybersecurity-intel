@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_connection():
+    if db_url := os.getenv("DATABASE_URL"):
+        return psycopg2.connect(db_url)
     return psycopg2.connect(
         dbname=os.getenv("POSTGRES_DB", "firmable_intel"),
         user=os.getenv("POSTGRES_USER", "firmable"),
