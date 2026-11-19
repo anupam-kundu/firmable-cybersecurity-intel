@@ -44,3 +44,6 @@ PYTHONPATH=. python pipeline/load_db.py
 uvicorn api.main:app --reload --port 8000
 ```
 Open **http://127.0.0.1:8000** in your browser (or **http://127.0.0** for OpenAPI Swagger docs).
+
+## Deep-Dive Architecture & Scaling Plan
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the signal taxonomy, scoring weights, quality evaluation metrics, and 10 TB/month production scaling design.
