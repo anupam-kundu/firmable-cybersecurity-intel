@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Firmable | B2B Cyber Threat & Attack Surface Intelligence</title>
+  <script src="https://tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+      <div>
+        <span class="text-xs font-bold uppercase text-indigo-400">Firmable Intelligence</span>
+        <h1 class="text-2xl font-bold">B2B Cyber Exposure &amp; Threat Signal Explorer</h1>
+      </div>
+      <span class="text-xs text-emerald-400">&bull; Live Shodan + PostgreSQL + FastAPI</span>
+    </div>
+    <div id="kpi-grid" class="grid grid-cols-2 md:grid-cols-6 gap-4"></div>
+    <div class="flex gap-3">
+      <input id="search-input" type="text" placeholder="Search domain, company, or CVE..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" />
+      <select id="tier-filter" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+        <option value="">All Risk Tiers</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+      <button onclick="loadCompanies()" class="bg-indigo-600 px-4 py-2 rounded-lg text-sm font-medium">Filter</button>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl overflow-y-auto max-h-[560px]">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-950 text-xs uppercase text-slate-400 sticky top-0">
+            <tr><th class="p-3">Company / Domain</th><th class="p-3">Score</th><th class="p-3">CVEs</th><th class="p-3">Assets</th></tr>
+          </thead>
+          <tbody id="company-tbody" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+      <div id="detail-panel" class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-y-auto max-h-[560px]"></div>
+    </div>
+  </div>
+  <script>
+    const badge = t => `<span class="px-2 py-0.5 text-xs font-semibold rounded bg-slate-800 text-indigo-300">${t}</span>`;
+
+    async function loadSummary() {
+      const { kpis: k } = await (await fetch('/api/summary')).json();
+      const items = [
+        ["B2B Companies", Number(k.total_companies).toLocaleString()],
+        ["Exposed Assets", Number(k.total_assets).toLocaleString()],
+        ["Total CVEs", Number(k.total_cves).toLocaleString()],
+        ["Critical Risk", Number(k.critical_companies).toLocaleString()],
+        ["High Risk", Number(k.high_risk_companies).toLocaleString()],
+        ["Avg Score", `${k.avg_exposure_score} / 100`]
+      ];
+      document.getElementById('kpi-grid').innerHTML = items.map(([l, v]) =>
+        `<div class="bg-slate-900 border border-slate-800 rounded-xl p-4"><div class="text-xs text-slate-400">${l}</div><div class="text-lg font-bold mt-1">${v}</div></div>`
+      ).join('');
+    }
+
+    async function loadCompanies() {
+      const q = encodeURIComponent(document.getElementById('search-input').value.trim());
+      const tier = encodeURIComponent(document.getElementById('tier-filter').value);
+      const { companies } = await (await fetch(`/api/companies?search=${q}&risk_tier=${tier}&limit=50`)).json();
+      document.getElementById('company-tbody').innerHTML = companies.map(c => `
+        <tr onclick="loadDetail(${c.id})" class="hover:bg-slate-800/60 cursor-pointer">
+          <td class="p-3"><div class="font-semibold">${c.company_name}</div><div class="text-xs text-indigo-400">${c.domain} &bull; ${c.country_code}</div></td>
+          <td class="p-3 font-bold">${c.exposure_score} ${badge(c.risk_tier)}</td>
+          <td class="p-3 text-rose-300">${c.cve_count}</td>
+          <td class="p-3">${c.asset_count}</td>
+        </tr>`).join('');
+      if (companies.length) loadDetail(companies.id);
+    }
+
+    async function loadDetail(id) {
+      const { company: c, assets, signals } = await (await fetch(`/api/companies/${id}`)).json();
+      document.getElementById('detail-panel').innerHTML = `
+        <div class="border-b border-slate-800 pb-3 mb-3">
+          <h2 class="text-lg font-bold">${c.company_name} (${c.exposure_score}/100)</h2>
+          <p class="text-xs text-indigo-400">${c.domain} &bull; ${c.hosting_provider} &bull; ${c.country_code}</p>
+        </div>
+        <h3 class="text-xs font-bold uppercase text-slate-400 mb-2">GTM &amp; Cyber Signals</h3>
+        <div class="space-y-2 mb-4">${signals.map(s => `
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs">
+            <div class="font-bold text-indigo-300">${s.signal_type} (${s.severity})</div>
+            <p class="text-slate-200 mt-1">${s.signal_summary}</p>
+            <p class="text-emerald-400 mt-1">&rarr; ${s.recommended_action}</p>
+          </div>`).join('')}
+        </div>
+        <h3 class="text-xs font-bold uppercase text-slate-400 mb-2">Exposed Endpoints (${assets.length})</h3>
+        <div class="space-y-1.5 text-xs">${assets.slice(0, 10).map(a => `
+          <div class="bg-slate-950 p-2 rounded border border-slate-800 font-mono">
+            ${a.ip_str}:${a.port} &mdash; ${a.product || 'Service'} ${a.version || ''} ${a.ssl_expired ? '⚠️ Expired SSL' : ''}
+          </div>`).join('')}
+        </div>`;
+    }
+
+    loadSummary();
+    loadCompanies();
+  </script>
+</body>
+</html>
