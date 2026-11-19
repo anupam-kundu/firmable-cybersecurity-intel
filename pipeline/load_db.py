@@ -24,9 +24,10 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
 
     with conn.cursor() as cur:
         cur.execute("SELECT processed_at FROM processed_files WHERE file_hash = %s", (f_hash,))
-        prev = cur.fetchone()
-        if prev and not force:
-            print(f"Skipping {data_path} (already ingested at {prev[0]}). Use --force to re-ingest.")
+        row = cur.fetchone()
+        if row and not force:
+            ts = row
+            print(f"Skipping {data_path} (already ingested at {ts}). Use --force to re-ingest.")
             conn.close()
             return
 
@@ -62,7 +63,7 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
             RETURNING id, domain""",
             company_rows, fetch=True
         )
-        dom_id = {r[1]: r[0] for r in inserted}
+        dom_id = {dom: cid for cid, dom in inserted}
         affected_ids = list(dom_id.values())
 
         asset_rows = [
@@ -86,8 +87,6 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
                 last_seen_at = NOW()""",
             asset_rows, page_size=2000
         )
-
-        # Recompute exact rollup metrics from all accumulated exposed_assets for affected companies
         cur.execute("""
             SELECT company_id,
                    COUNT(*) AS asset_cnt,
@@ -102,10 +101,13 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
             WHERE company_id = ANY(%s)
             GROUP BY company_id
         """, (affected_ids,))
-        rollups = {r[0]: r[1:] for r in cur.fetchall()}
+        rollups = {
+            cid: (asset_cnt, ports, stack, cves, exp_ssl, all_tags)
+            for cid, asset_cnt, ports, stack, cves, exp_ssl, all_tags in cur.fetchall()
+        }
 
         cur.execute("SELECT id, max_cvss, hosting_provider FROM companies WHERE id = ANY(%s)", (affected_ids,))
-        comp_meta = {r: (float(r[1] or 0), r[2]) for r in cur.fetchall()}
+        comp_meta = {cid: (float(cvss or 0), hosp) for cid, cvss, hosp in cur.fetchall()}
 
         update_rows, signal_rows = [], []
         for cid, (asset_cnt, ports, stack, cves, exp_ssl, all_tags) in rollups.items():
@@ -131,7 +133,7 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
                     json.dumps({"cve_count": len(cves_list), "max_cvss": max_cvss})
                 )))
             if hr_ports:
-                p_names = [f"{p} ({HIGH_RISK_PORTS[p][0]})" for p in sorted(hr_ports)]
+                p_names = [f"{p} ({HIGH_RISK_PORTS[p]})" for p in sorted(hr_ports)]
                 signal_rows.append(clean((
                     cid, "High-Risk Service / DB Exposure", "High", 0.91,
                     f"Publicly reachable sensitive services: {', '.join(p_names)}.",
@@ -191,11 +193,11 @@ def load_to_postgres(data_path: str = DEFAULT_DATA_PATH, force: bool = False):
     conn.commit()
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM companies")
-        n_comp = cur.fetchone()[0]
+        (n_comp,) = cur.fetchone()
         cur.execute("SELECT COUNT(*) FROM exposed_assets")
-        n_assets = cur.fetchone()[0]
+        (n_assets,) = cur.fetchone()
         cur.execute("SELECT COUNT(*) FROM cyber_signals")
-        n_sig = cur.fetchone()[0]
+        (n_sig,) = cur.fetchone()
     conn.close()
     print(f"Upsert complete -> Total Companies: {n_comp:,} | Total Assets: {n_assets:,} | Total Signals: {n_sig:,}")
 
@@ -205,6 +207,6 @@ if __name__ == "__main__":
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     if "--reset" in flags:
         reset_schema()
-    target = args[0] if args else DEFAULT_DATA_PATH
+    target = args if args else DEFAULT_DATA_PATH
     load_to_postgres(target, force=("--force" in flags or "--reset" in flags))
     print(f"Done in {round(time.time() - t0, 1)}s.")
