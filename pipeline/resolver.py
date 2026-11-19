@@ -31,7 +31,7 @@ def extract_root_domain(candidate: str) -> str | None:
     if any(ch in d for ch in ("@", "/", " ", ":")) or "." not in d:
         return None
     ext = EXTRACTOR(d)
-    if not ext.domain or not ext.suffix:
+    if not ext.domain or not ext.suffix or ext.domain.startswith('-') or ext.domain.endswith('-'):
         return None
     root = f"{ext.domain}.{ext.suffix}"
     if root in INFRA_SUFFIXES or d in INFRA_SUFFIXES or ext.suffix in INFRA_SUFFIXES:
