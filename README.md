@@ -25,6 +25,7 @@ Shodan JSONL.GZ Stream (100K Real Banners / 2K Sample)
 ```
 
 ## Key Engineering Highlights
+
 - **Dynamic Domain Resolution (`tldextract` + `config/infra_blocklist.txt`):** Uses Mozilla's Public Suffix List for accurate multi-part ccTLD parsing (e.g., `.co.in`, `.com.au`, `.co.uk`) and an externalized infrastructure blocklist so analysts can exclude new ISP/CDN patterns without code changes.
 - **Database Integrity:** Bulk-loads normalized company, endpoint, and signal records with `psycopg2.extras.execute_values` and NUL-byte (`\x00`) banner sanitization.
 - **B2B Commercialization:** Translates raw technical telemetry (open databases, high-CVSS CVEs, expired SSL certificates) into plain-English GTM outreach recommendations.
@@ -43,7 +44,13 @@ PYTHONPATH=. python pipeline/load_db.py
 # 3. Launch API & Interactive Dashboard
 uvicorn api.main:app --reload --port 8000
 ```
+
 Open **http://127.0.0.1:8000** in your browser (or **http://127.0.0** for OpenAPI Swagger docs).
 
 ## Deep-Dive Architecture & Scaling Plan
+
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the signal taxonomy, scoring weights, quality evaluation metrics, and 10 TB/month production scaling design.
+
+## Hosted App
+
+https://firmable-cybersecurity-intel.onrender.com/
